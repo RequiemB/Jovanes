@@ -7,9 +7,11 @@ import asyncio
 import json
 
 from helpers import utils as _utils
-from typing import Optional, List, Dict, TYPE_CHECKING
+from typing import Any, Optional, List, Dict, TYPE_CHECKING
+from config import reactionFailure, reactionSuccess
 
 if TYPE_CHECKING:
+    from discord.ext.commands import Context
     from ..main import Jovanes
 
 #MEMORY_EMOJIS = ['😀', '😁', '😂', '🤣', '😃', '😄', '😎', '🥲', '😙', '😗','🤗', '🙂', '🎈', '🧨', '✨', '🎉', '🎁', '🎀', '🎏','🎄', '🎃', '🎗️', '🎊', '🎠', '🌭', '🧈', '🍞', '🍕', '🧀' , '🌮', '🚒', '🚌', '💥', '💤']
@@ -640,6 +642,104 @@ class RPS(discord.ui.View):
             await interaction.response.edit_message(embed=self.embed, view=self)
             await interaction.followup.send("You selected :scissors: Scissors.", ephemeral=True)
 
+class GuessModal(discord.ui.Modal):
+    def __init__(self, view: Guess) -> None:
+        self.view = view
+        super().__init__(title="Guess")
+        self.guess = discord.ui.TextInput(label="Guess", placeholder=f"Type a number in the range {view.min_range} - {view.max_range}")
+        self.add_item(self.guess)
+
+    async def on_submit(self, interaction: discord.Interaction[Jovanes]) -> None:
+        try:
+            guess = int(self.guess.value)
+        except ValueError:
+            await interaction.response.send_message("Input must be an integer.", ephemeral=True)
+            return
+        
+        if guess < self.view.min_range or guess > self.view.max_range:
+            await interaction.response.send_message(f"The range is `{self.view.min_range} - {self.view.max_range}`. Your input was `{guess}`.", ephemeral=True)
+            return
+        
+        self.view.guesses[interaction.user.id] += 1
+
+        if guess == self.view.num:
+            self.stop()
+            self.view.end_game_task.cancel()
+            await interaction.response.send_message(f"{interaction.user.mention} won the game. The number was {guess}.")
+            log = self.view.embed.fields[2].value
+            assert log is not None
+
+            if log.startswith("No guesses"):
+                log = f"{reactionSuccess} {interaction.user.mention}"
+            else:
+                log += f"\n{reactionSuccess} {interaction.user.mention}"
+
+            self.view.embed.remove_field(2)
+            self.view.embed.insert_field_at(2, name="Guesses", value=log, inline=False)
+            self.view.guess.disabled = True
+            self.view.guess.label = f"Winner: {interaction.user.display_name}"
+            
+            async with interaction.client.pool.acquire() as conn:
+                res = await conn.fetchone("SELECT win FROM guess WHERE user_id = ?", (interaction.user.id))
+
+                if not res:
+                    await conn.execute("INSERT INTO guess (user_id, wins) VALUES (?, ?)", (interaction.user.id, 1))
+                else:
+                    wins = res[0]
+                    wins += 1
+
+                    await conn.execute("UPDATE guess SET wins = ? WHERE user_id = ?", (wins, interaction.user.id))
+ 
+            if self.view.message:
+                await self.view.message.edit(embed=self.view.embed, view=self)
+        else:
+            await interaction.response.send_message(f"Your guess was wrong.", ephemeral=True)
+            log = self.view.embed.fields[2].value
+            assert log is not None
+
+            if log.startswith("No guesses"):
+                log = f"{reactionFailure} {interaction.user.mention}"
+            else:
+                log += f"\n{reactionFailure} {interaction.user.mention}"
+
+            self.view.embed.remove_field(2)
+            self.view.embed.insert_field_at(2, name="Guesses", value=log, inline=False)
+
+            if self.view.message:
+                await self.view.message.edit(embed=self.view.embed)
+
+class Guess(discord.ui.View):
+    def __init__(self, *, num: int, guesses: int, min_range: int, max_range: int, embed: discord.Embed) -> None:
+        self.num = num
+        self.no_of_guesses = guesses
+        self.min_range = min_range
+        self.max_range = max_range
+        self.embed = embed
+        super().__init__()
+
+        self.guesses: Dict[int, int] = {}
+        self.message: Optional[discord.Message] = None
+        self.end_game_task = asyncio.create_task(self.end_game())
+
+    async def end_game(self) -> None:
+        await asyncio.sleep(300)
+        self.guess.disabled = True
+        self.stop()
+
+        if self.message:
+            await self.message.edit(content=f"No one guessed the correct number. It was `{self.num}`.", view=self)
+
+    @discord.ui.button(label="Guess", style=discord.ButtonStyle.grey)
+    async def guess(self, interaction: discord.Interaction[Jovanes], button: discord.ui.Button) -> Any:
+        if interaction.user.id not in self.guesses:
+            self.guesses[interaction.user.id] = 0
+
+        if self.guesses[interaction.user.id] == self.no_of_guesses:
+            await interaction.response.send_message("You reached your maximum guesses.", ephemeral=True)
+            return
+        
+        await interaction.response.send_modal(GuessModal(self))
+
 class TextPaginator(discord.ui.View):
     def __init__(self, content: str) -> None:
         self.message: Optional[discord.Message] = None
@@ -718,3 +818,55 @@ class TextPaginator(discord.ui.View):
         self.configure_button_availability()
 
         await interaction.response.edit_message(content=self.split_parts[self.current_page-1], view=self)
+
+class PrefixRemoveSelect(discord.ui.Select['PrefixRemove']):
+    def __init__(self, prefixes: List[str]) -> None:
+        self.prefixes = prefixes
+        self.stripped_prefixes = [prefix.strip() for prefix in self.prefixes]
+
+        options = [discord.SelectOption(label=prefix, value=prefix) for prefix in prefixes]
+        super().__init__(
+            placeholder = "Select a prefix to remove",
+            options = options
+        )
+
+    async def callback(self, interaction: discord.Interaction[Jovanes]) -> Any:
+        assert interaction.guild
+
+        async with interaction.client.pool.acquire() as conn:
+            actual_prefix = self.prefixes[self.stripped_prefixes.index(self.values[0])]
+            await conn.execute("DELETE FROM prefixes WHERE guild_id = ? AND prefix = ?", (interaction.guild.id, actual_prefix))
+
+        e = discord.Embed(
+            title = "Prefix Remover",
+            description = "Select a prefix to remove from the dropdown below.",
+            color = discord.Color.blue(),
+            timestamp = discord.utils.utcnow()
+        )
+        i = self.stripped_prefixes.index(self.values[0])
+        self.options.pop(i)
+        self.prefixes.pop(i)
+        self.stripped_prefixes.remove(self.values[0])
+
+        e.add_field(name="Prefixes", value="\n".join([f"`{prefix}`" for prefix in self.prefixes]))
+        if len(self.prefixes) == 1:
+            self.view.children[0].disabled = True # type: ignore
+
+        await interaction.response.edit_message(embed=e, view=self.view)
+
+class PrefixRemove(discord.ui.View):
+    def __init__(self, ctx: Context[Jovanes], prefixes: List[str]) -> None:
+        self.ctx = ctx
+        self.prefixes = prefixes
+        self.message: Optional[discord.Message] = None
+        
+        super().__init__(timeout=300.0)
+        self.add_item(PrefixRemoveSelect(self.prefixes))
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            if isinstance(item, discord.ui.Select):
+                item.disabled = True
+
+        if self.message:
+            await self.message.edit(view=self)

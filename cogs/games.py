@@ -10,8 +10,9 @@ from helpers import (
     utils as _utils,
     views
 )
+from config import reactionFailure, reactionSuccess
 
-from typing import Dict, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..main import Jovanes
@@ -239,9 +240,7 @@ class Games(commands.Cog):
 
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(name="rps", description="Play a RPS match with another user.")
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @commands.command(name="rps", description="Play a RPS match with another user.")
     @commands.guild_only()
     async def rps(self, ctx: commands.Context, player: discord.Member) -> None:
         assert isinstance(ctx.author, discord.Member)
@@ -323,6 +322,30 @@ class Games(commands.Cog):
                     e.description += f"* <@{member.id}> lost against <@{row[0]}>.\n" # type: ignore
 
         await ctx.send(embed=e)
+
+    @commands.command(name="guess", description="Guess a number in a random range.")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def guess(self, ctx: commands.Context[Jovanes], num_range: int, guesses: int) -> Any:
+        if num_range < 10:
+            e = discord.Embed(description=f"{reactionFailure} Range has to be bigger than or equal to 10.", color=discord.Color.red())
+            await ctx.reply(embed=e)
+            return
+        
+        min_range = random.randint(1, 65535)
+        max_range = min_range + num_range
+        num = random.randint(min_range, max_range)
+
+        e = discord.Embed(
+            title = "Guesser",
+            description = f"A guesser game has been started by {ctx.author.mention}. The game will end in 5 minutes.",
+            color = discord.Color.blue(),
+            timestamp = discord.utils.utcnow()
+        )
+        e.add_field(name="No. of guesses per player", value=guesses)
+        e.add_field(name="Range", value=f"`{min_range} - {max_range}`")
+        e.add_field(name="Guesses", value="No guesses have been made yet.", inline=False)
+        view = views.Guess(num=num, guesses=guesses, min_range=min_range, max_range=max_range, embed=e)
+        view.message = await ctx.reply(embed=e, view=view)
 
 async def setup(bot: Jovanes) -> None:
     await bot.add_cog(Games(bot))

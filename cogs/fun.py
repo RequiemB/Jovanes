@@ -5,12 +5,17 @@ from discord.ext import commands
 from discord import app_commands
 
 import random
+import os
 import aiohttp
+import pathlib
+import asyncio
 
 from babel import Locale
-from typing import Dict, Union, Optional, TYPE_CHECKING
+from typing import Dict, Union, Optional, Any, TYPE_CHECKING
 from helpers import utils as _utils
 from langdetect import detect 
+#from selenium.webdriver import Firefox, FirefoxOptions
+#from functools import partial
 
 if TYPE_CHECKING:
     from ..main import Jovanes
@@ -44,17 +49,42 @@ class Fun(commands.Cog):
         self.context_menu = app_commands.ContextMenu(
             name = "Translate",
             callback = self._context_translate,
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
-            allowed_installs=app_commands.AppInstallationType(guild=False, user=True)
+#            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
+#            allowed_installs=app_commands.AppInstallationType(guild=True, user=True)
         )
         self.bot.tree.add_command(self.context_menu)
         self.snipe_data = self.bot.snipe_data
+        self.snipe_tasks: Dict[int, asyncio.Task] = {}
+        self.who_say: Dict[int, int] = {}
+        self.sniped_image: Optional[discord.Message] = None
+#        options = FirefoxOptions()
+#        options.add_argument('--headless')
+#        self.browser = Firefox(options=options)
 
     @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message) -> None:
+    async def on_message(self, message: discord.Message) -> Any:
+        if not message.attachments:
+            return
+        
+        file = message.attachments[0]
+        if not os.path.exists("./images"):
+            os.mkdir("./images")
+
+        _format = file.filename.split(".")[::-1][0]
+        await file.save(pathlib.Path(f"./images/{message.id}.{_format}"))
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message) -> Any:
+        if not message.guild:
+            return
+
         self.snipe_data[message.channel.id] = message
 
     async def _translate(self, to_lang: str, text: str) -> Dict[str, str]:
+        api_key = os.getenv("RAPIDAPI_KEY")
+        if not api_key:
+            return {}
+        
         url = "https://microsoft-translator-text.p.rapidapi.com/translate"
 
         query = {"api-version":"3.0","to[0]":to_lang,"textType":"plain","profanityAction":"NoAction"}
@@ -62,7 +92,7 @@ class Fun(commands.Cog):
         payload = [{"Text": text}]
         headers = {
         	"content-type": "application/json",
-        	"X-RapidAPI-Key": "d4ae69e488msh455bb9ba669a169p13194bjsn706bc39e325a",
+        	"X-RapidAPI-Key": api_key,
         	"X-RapidAPI-Host": "microsoft-translator-text.p.rapidapi.com"
         }
         resp = await self._session.post(url, json=payload, headers=headers, params=query)
@@ -73,8 +103,8 @@ class Fun(commands.Cog):
         await interaction.response.defer(thinking=True)
 
         source_lang = None
-        detected = detect(message.content)
         try:
+            detected = detect(message.content)
             source_lang = Locale(detected[:2])
         except:
             pass
@@ -89,7 +119,16 @@ class Fun(commands.Cog):
             await interaction.followup.send(f"I can\'t translate this message. It's too long.")
             return
         
-        translation = translation[0]['translations'][0]['text'] # type: ignore
+        if not translation:
+            await interaction.followup.send(f"No API key was found.")
+            return
+        
+        try:
+            translation = translation[0]['translations'][0]['text'] # type: ignore
+        except KeyError:
+            await interaction.followup.send("No translations were received from the API.")
+            return
+        
         e = discord.Embed(
             title = "Translation",
             description = f"Translation of the message by {message.author.mention} was **successful**.",
@@ -126,26 +165,20 @@ class Fun(commands.Cog):
         size = "=" * number
         return size
 
-    @commands.hybrid_command(name="gay", description="Shows the gay rate of a user (very accurate).")
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
-    async def gay(self, ctx: commands.Context, *, name: str) -> None:
+    @commands.command(name="gay", description="Shows the gay rate of a user (very accurate).")
+    async def gay(self, ctx: commands.Context, *, name: str) -> Any:
         rate = random.randint(0, 100)
         e = discord.Embed(description = f":rainbow_flag: **{name}** is {rate}% gay.", color=discord.Color.random())
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(name="hot", description="Shows the hotness rate of a user (very accurate).")
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
-    async def hot(self, ctx: commands.Context, *, name: str) -> None:
+    @commands.command(name="hot", description="Shows the hotness rate of a user (very accurate).")
+    async def hot(self, ctx: commands.Context, *, name: str) -> Any:
         rate = random.randint(0, 100)
         e = discord.Embed(description = f":sunglasses: **{name}** is {rate}% hot.", color=discord.Color.random())
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(description="Shows the IQ rate of a member (very accurate).")
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
-    async def iq(self, ctx: commands.Context, *, name: str) -> None:
+    @commands.command(description="Shows the IQ rate of a member (very accurate).")
+    async def iq(self, ctx: commands.Context, *, name: str) -> Any:
         rate = random.randint(70, 250)
         if rate % 100 < 25 or rate % 100 < 45:
             if rate % 100 < 25:
@@ -157,7 +190,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=e)
 
     @commands.command(description="Tells you if the person is a nigger.")
-    async def nigger(self, ctx: commands.Context, *, name: str) -> None:
+    async def nigger(self, ctx: commands.Context, *, name: str) -> Any:
         chance = random.choice([0, 1])
         if chance == 1:
             e = discord.Embed(description = f":man_tone5: {name} is a nigger.", color=0x000000)
@@ -165,16 +198,14 @@ class Fun(commands.Cog):
             e = discord.Embed(description = f":man_tone1: {name} is not a nigger.", color=discord.Color.lighter_gray())
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(description="Shows the penis size of a user.")
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
-    async def size(self, ctx: commands.Context, *, name: str) -> None:
+    @commands.command(description="Shows the penis size of a user.")
+    async def size(self, ctx: commands.Context, *, name: str) -> Any:
         size = self.get_size()
         e = discord.Embed(description = f"{name}'s cock size is 8{size}D.", color=discord.Color.random())
         await ctx.send(embed=e)
 
     @commands.command(description="Shows the Fred profile of a member.")
-    async def profile(self, ctx: commands.Context, member: Union[discord.User, discord.Member]) -> None:
+    async def profile(self, ctx: commands.Context, member: Union[discord.User, discord.Member]) -> Any:
         assert ctx.guild
 
         member = member or ctx.author
@@ -247,26 +278,46 @@ class Fun(commands.Cog):
         await ctx.send(embed=e)
 
     @commands.command(description="Shows the last deleted message in a channel.")
-    async def snipe(self, ctx: commands.Context) -> None:
+    async def snipe(self, ctx: commands.Context) -> Any:
         if ctx.channel.id not in self.snipe_data:
-            await ctx.reply("No message were deleted in this channel since bot initialization.")
+            await ctx.reply("No message were deleted in this channel recently.")
             return
 
         message = self.snipe_data[ctx.channel.id]
 
         e = discord.Embed(color=discord.Color.blue())
         e.set_author(name=message.author.display_name, icon_url=message.author.display_avatar)
-        if message.embeds:
-            e.description = message.embeds[0].description
-        else:
-            e.description = message.content
-
         e.timestamp = message.created_at
+        e.description = message.content if message.content else ""
+
+        if message.attachments:
+            filename = message.attachments[0].filename
+            _format = filename.split(".")[::-1][0]
+            e.description = filename
+            try:
+                file = discord.File(f"./images/{message.id}.{_format}", filename=filename)
+            except:
+                await ctx.reply(embed=e)
+            else:
+                if _format in ("jpg", "jpeg", "png", "webp", "bmp"):
+                    e.set_image(url=f"attachment://{filename}")
+                    await ctx.reply(file=file, embed=e)
+
+                else:
+                    await ctx.reply(f"Video sent by: {message.author.mention}", allowed_mentions=discord.AllowedMentions.none(), file=file)
+            return
+
+        if message.embeds:
+            if message.embeds[0].url:
+                await ctx.reply(f"GIF sent by {message.author.mention}.\n{message.embeds[0].url}", allowed_mentions=discord.AllowedMentions.none())
+                return
+            
+            e.description += f"\n{message.embeds[0].description}"
 
         await ctx.reply(embed=e)
-
+        
     @commands.command(description="Mock a message by a user.")
-    async def mock(self, ctx: commands.Context, *, statement: Optional[str]) -> None:
+    async def mock(self, ctx: commands.Context[Jovanes], *, statement: Optional[str]) -> Any:
         if not statement and not ctx.message.reference:
             await ctx.reply("You must either provide a statement to mock or reference a message.")
             return
@@ -282,7 +333,7 @@ class Fun(commands.Cog):
                 return
             
             content = resolved.content
-            if len(content) > 250:
+            if len(content) > 250: 
                 await ctx.send("Message content exceeds 250 characters in length.")
                 return
             
@@ -299,6 +350,95 @@ class Fun(commands.Cog):
             
             mock = _utils.convert_to_mock(statement)
             await ctx.send(mock)
+
+    @commands.command(name="say", description="Say something as the bot.")
+    async def say(self, ctx: commands.Context[Jovanes], channel: discord.TextChannel, *, message: str) -> Any:
+        if ctx.author.id not in self.bot.say_authorized:
+            await ctx.reply("You're not authorized to use this command.")
+            return
+
+        m = await channel.send(message)
+        self.who_say[m.id] = ctx.author.id
+        await ctx.message.add_reaction('✅')
+
+    @commands.command(name="cat", description="Shows a cat.")
+    async def cat(self, ctx: commands.Context) -> Any:
+        URL = "https://api.thecatapi.com/v1/images/search"
+        
+        res = await self._session.get(URL)
+        data = await res.json()
+
+        e = discord.Embed(
+            title = "Here's a cat! :cat:",
+            color = discord.Color.random()
+        )
+
+        e.set_image(url=data[0]['url'])
+        await ctx.reply(embed=e)
+
+#    @commands.command(name="screenshot", description="Sends a screenshot of a webpage.", aliases=["sc", "ss"])
+#    async def screenshot(self, ctx: commands.Context[Jovanes], url: str) -> Any:
+#        if not _utils.is_url(url):
+#            e = discord.Embed(description=f"**{url}** is not a valid URL.", color=discord.Color.red())
+#            await ctx.reply(embed=e)
+#            return
+#        
+#        if url.startswith("www"):
+#            url = f"https://{url}"
+#
+#        def save_screenshot(url: str):
+#            assert ctx.guild
+#
+#            self.browser.get(url)
+#
+#            if not os.path.exists("./screenshots"):
+#                os.mkdir("./screenshots")
+#
+#            self.browser.save_screenshot(f'./images/{ctx.guild.id}.png')
+#            return discord.File(f"./images/{ctx.guild.id}.png", filename="screenshot.png")
+#
+#        def done_callback(future: asyncio.Future[discord.File]):
+#            screenshot = future.result()
+#            asyncio.create_task(ctx.reply(file=screenshot))
+#
+#        func = partial(save_screenshot, url)
+#        loop = asyncio.get_event_loop()
+#        fut = loop.run_in_executor(None, func)
+#        fut.add_done_callback(done_callback)
+
+    @commands.command(name="joke", description="Sends a random joke.")
+    async def joke(self, ctx: commands.Context[Jovanes]) -> Any:
+        URL = "https://v2.jokeapi.dev/joke/Any"
+
+        res = await self._session.get(URL)
+        data = await res.json()
+
+        if data["type"] == "twopart":
+            _setup = data["setup"]
+            delivery = data["delivery"]
+
+            await ctx.reply(f"{_setup}\n\n{delivery}")
+        else:
+            joke = data["joke"]
+            await ctx.reply(joke)
+
+    @commands.command(description="Lets you know who used the say command.")
+    async def whosay(self, ctx: commands.Context[Jovanes]) -> Any:
+        if ctx.message.reference is None:
+            await ctx.reply("You must reference a message by the bot.")
+            return
+        
+        resolved = ctx.message.reference.resolved
+        if not resolved or isinstance(resolved, discord.DeletedReferencedMessage):
+            await ctx.reply("Referenced message wasn't found in the message cache.")
+            return
+        
+        if resolved.author.id != self.bot.user.id or resolved.id not in self.who_say: # type: ignore
+            await ctx.reply("This is not a message sent by the command say.")
+            return
+        
+        await ctx.message.delete()
+        await resolved.reply(f"This message was sent by <@{self.who_say[resolved.id]}>.")
 
 async def setup(bot: Jovanes) -> None:
     await bot.add_cog(Fun(bot))

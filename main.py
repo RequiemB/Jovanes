@@ -15,9 +15,10 @@ from helpers import (
     logger as _logger,
     utils as _utils
 )
+from helpers.errors import EntityDisabled
 from datetime import datetime
 
-from typing import Dict, Union, List, TYPE_CHECKING
+from typing import Optional, Dict, Union, List
 from typing_extensions import Self
 from dotenv import load_dotenv
 
@@ -29,7 +30,7 @@ handler.setLevel(logging.INFO)
 handler.setFormatter(_logger.Logger()) 
 logger.addHandler(handler)
 
-DEFAULT_PREFIXES = ["fn "]
+DEFAULT_PREFIXES = ["?"]
 
 class Jovanes(commands.Bot):
      
@@ -47,8 +48,6 @@ class Jovanes(commands.Bot):
         if not res:
             return DEFAULT_PREFIXES
         
-        print(res[0][0])
-        
         prefixes: List[str] = []
         for row in res:
             prefixes.append(row[0])
@@ -64,23 +63,28 @@ class Jovanes(commands.Bot):
         self.snipe_data: Dict[int, discord.Message] = {}
         self.logger = logger
         self.trivia_streaks: Dict[int, int] = {}
+        self.logging_webhooks: Dict[int, discord.Webhook] = {}
 
         super().__init__(
             command_prefix = self._get_prefix,
             intents = discord.Intents.all(),
             status = discord.Status.dnd, 
             activity = discord.Activity(name="joanus in the shower", type=discord.ActivityType.watching),
-            owner_ids = [680416522245636183],
+            owner_ids = [680416522245636183, 744487004812869662],
             case_insensitive = False
         )
+
+        self.say_authorized: List[int] = []
+        if self.owner_ids:
+            self.say_authorized.extend(self.owner_ids)
 
     async def setup_hook(self) -> None:
         self._session = aiohttp.ClientSession()
 
         if not os.path.exists("./database"):
             os.mkdir("./database")
-            
-        self.pool = await asqlite.create_pool("database/database.db")
+
+        self.pool = await asqlite.create_pool("./database/database.db")
         self.logger.info("Created database connection pool.")
 
         async with self.pool.acquire() as conn:
@@ -101,19 +105,13 @@ class Jovanes(commands.Bot):
         print(f"Logged in as {self.user}.")
 
     async def is_entity_disabled(self, entity: Union[commands.Command, commands.Cog], guild_id: int) -> bool:
-        if isinstance(entity, commands.Command):
-            command = entity
-
+        if isinstance(entity, (commands.Command, commands.Cog)):
+            name = entity.qualified_name
+            
             async with self.pool.acquire() as conn:
-                res = await conn.fetchone("SELECT is_disabled FROM disabled WHERE guild_id = ? AND entity = ?", (guild_id, command.name))
+                res = await conn.fetchone("SELECT entity FROM configuration WHERE guild_id = ? AND entity = ?", (guild_id, name))
 
-            if not res or res[0] == 0:
-                return False
-
-            return True
-        
-        if isinstance(entity, commands.Cog):
-            cog = entity
+            return res is not None
     
     async def close(self) -> None:
         await bot.pool.close()
@@ -121,20 +119,53 @@ class Jovanes(commands.Bot):
 
         bot.logger.info("Shutting down the bot...")
         await super().close()
+
+    async def create_logging_webhook(self, guild: discord.Guild) -> Optional[discord.Webhook]:
+        async with self.pool.acquire() as conn:
+            res = await conn.fetchone("SELECT log_channel FROM guild_data WHERE guild_id = ?", (guild.id))
+
+            if not res[0]:
+                return
+
+            channel = self.get_channel(res[0])
+            if not channel or not isinstance(channel, discord.TextChannel):
+                return
+
+            webhook = await channel.create_webhook(name=self.user.name) # type: ignore
+            self.logging_webhooks[guild.id] = webhook
+            
+            await conn.execute("UPDATE guild_data SET log_webhook = ? WHERE guild_id = ?", (webhook.url, guild.id))
+            return webhook
         
 bot = Jovanes()
 
 # Bot checks
 
 @bot.check
-async def disabled_check(ctx: commands.Context) -> bool:
-    if not ctx.guild:
+async def disabled_check(ctx: commands.Context[Jovanes]) -> bool:
+    if not ctx.guild or not ctx.command:
         return True
     
-    assert isinstance(ctx.command, (commands.Cog, commands.Command))
+    # Cog check
+
+    cog = ctx.command.cog
+    if cog:
+        assert isinstance(cog, commands.Cog)
+
+        if cog.qualified_name == "Management": # Check if it's the management cog
+            return True
+
+        disabled = await bot.is_entity_disabled(cog, ctx.guild.id)
+        if disabled:
+            raise EntityDisabled(commands.Cog)
+    
+    # Command check
 
     disabled = await bot.is_entity_disabled(ctx.command, ctx.guild.id)
-    return not disabled
+    if disabled:
+        raise EntityDisabled(commands.Command)
+
+    return True
 
 async def main() -> None:
     load_dotenv()

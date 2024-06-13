@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import html
+import discord
+import re
 
 from typing import TYPE_CHECKING
 
@@ -13,6 +15,7 @@ async def set_up_database(conn: ProxiedConnection) -> None:
         CREATE TABLE IF NOT EXISTS guild_data (
             guild_id INT NOT NULL,
             log_channel INT,
+            log_webhook VARCHAR(150),
             PRIMARY KEY (guild_id)
         )
     """
@@ -22,7 +25,7 @@ async def set_up_database(conn: ProxiedConnection) -> None:
     query = """
         CREATE TABLE IF NOT EXISTS prefixes (
             guild_id INT NOT NULL,
-            PREFIX CHAR(16)
+            prefix CHAR(16)
         )
     """
 
@@ -41,10 +44,10 @@ async def set_up_database(conn: ProxiedConnection) -> None:
     await conn.execute(query)
 
     query = """
-        CREATE TABLE IF NOT EXISTS disabled (
+        CREATE TABLE IF NOT EXISTS configuration (
             guild_id INT NOT NULL,
             entity CHAR(40),
-            is_disabled INT
+            disabled INT
         )
     """
 
@@ -75,6 +78,16 @@ async def set_up_database(conn: ProxiedConnection) -> None:
         CREATE TABLE IF NOT EXISTS rps (
             winner INT NOT NULL,
             rival INT NOT NULL
+        )
+    """
+
+    await conn.execute(query)
+
+    query = """
+        CREATE TABLE IF NOT EXISTS guess (
+            user_id INT NOT NULL,
+            wins INT,
+            PRIMARY KEY (user_id)
         )
     """
 
@@ -128,4 +141,7 @@ def convert_to_mock(statement: str) -> str:
     res += '" :nerd::point_up:'
     return res
 
-     
+URL_RE = r'^(http:\/\/www\.|https:\/\/www\.|http:\/\/|https:\/\/)?[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,5}(:[0-9]{1,5})?(\/.*)?$'
+
+def is_url(string: str) -> re.Match[str] | None:
+    return re.search(URL_RE, string)

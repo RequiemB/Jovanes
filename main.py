@@ -65,6 +65,9 @@ class Jovanes(commands.Bot):
         self.trivia_streaks: Dict[int, int] = {}
         self.logging_webhooks: Dict[int, discord.Webhook] = {}
 
+        self._session: aiohttp.ClientSession
+        self.pool: asqlite.Pool
+
         super().__init__(
             command_prefix = self._get_prefix,
             intents = discord.Intents.all(),
@@ -79,13 +82,8 @@ class Jovanes(commands.Bot):
             self.say_authorized.extend(self.owner_ids)
 
     async def setup_hook(self) -> None:
-        self._session = aiohttp.ClientSession()
-
         if not os.path.exists("./database"):
             os.mkdir("./database")
-
-        self.pool = await asqlite.create_pool("./database/database.db")
-        self.logger.info("Created database connection pool.")
 
         async with self.pool.acquire() as conn:
             await _utils.set_up_database(conn)
@@ -170,9 +168,13 @@ async def disabled_check(ctx: commands.Context[Jovanes]) -> bool:
 async def main() -> None:
     load_dotenv()
 
+    if not os.path.exists("./database"):
+        os.mkdir("./database")
+
     token = os.getenv("TOKEN")
     if token:
-        await bot.start(token)
+        async with bot, asqlite.create_pool("./database/database.db") as bot.pool, aiohttp.ClientSession() as bot._session:
+            await bot.start(token)
     else:
         raise RuntimeError("No token was found in the envs.")
 

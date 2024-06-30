@@ -18,13 +18,13 @@ class Owner(commands.Cog):
 
     @commands.command(description="Shuts down the bot.")
     @commands.is_owner()
-    async def shutdown(self, ctx: commands.Context) -> None:
+    async def shutdown(self, ctx: commands.Context[Jovanes]) -> None:
         await ctx.send('Shutting down now...')
         await self.bot.close()
 
     @commands.command(description="Clears the local image cache.")
     @commands.is_owner()
-    async def clearimages(self, ctx: commands.Context) -> None:
+    async def clearimages(self, ctx: commands.Context[Jovanes]) -> None:
         shutil.rmtree("./images")
         os.mkdir("./images")
         await ctx.message.add_reaction("✅")

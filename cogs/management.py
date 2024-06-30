@@ -162,13 +162,13 @@ class Management(commands.Cog):
     async def setlogging(self, ctx: commands.Context[Jovanes], channel: discord.TextChannel) -> Any:
         assert ctx.guild
 
-        try:
-            webhook = await channel.create_webhook(name=self.bot.user.name) # type: ignore
-        except discord.Forbidden:
+        if not channel.permissions_for(ctx.guild.me).manage_webhooks:
             await ctx.reply(embed=discord.Embed(description=f"{reactionFailure} The bot requires permissions to create webhooks in {channel.mention}.", color=discord.Color.red()))
             return
-        
+            
+        webhook = await channel.create_webhook(name=self.bot.user.name) # type: ignore
         self.bot.logging_webhooks[ctx.guild.id] = webhook
+        
         async with self.bot.pool.acquire() as conn:
             await conn.execute("UPDATE guild_data SET log_channel = ?, log_webhook = ? WHERE guild_id = ?", (channel.id, webhook.url, ctx.guild.id))
 

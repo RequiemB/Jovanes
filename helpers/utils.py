@@ -11,87 +11,59 @@ if TYPE_CHECKING:
     from asqlite import ProxiedConnection
 
 async def set_up_database(conn: ProxiedConnection) -> None:
-    query = """
+    sql_script = """
         CREATE TABLE IF NOT EXISTS guild_data (
             guild_id INT NOT NULL,
             log_channel INT,
             log_webhook VARCHAR(150),
             PRIMARY KEY (guild_id)
-        )
-    """
+        );
 
-    await conn.execute(query)
-
-    query = """
         CREATE TABLE IF NOT EXISTS prefixes (
             guild_id INT NOT NULL,
             prefix CHAR(16)
-        )
-    """
+        );
 
-    await conn.execute(query)
-
-    query = """
         CREATE TABLE IF NOT EXISTS trivia (
             user_id INT NOT NULL,
             correct INT,
             wrong INT,
             streak INT,
             PRIMARY KEY (user_id)
-        )
-    """
+        );
 
-    await conn.execute(query)
-
-    query = """
         CREATE TABLE IF NOT EXISTS configuration (
             guild_id INT NOT NULL,
             entity CHAR(40),
             disabled INT
-        )
-    """
+        );
 
-    await conn.execute(query)
-
-    query = """
         CREATE TABLE IF NOT EXISTS memory (
             user_id INT NOT NULL,
             minutes INT,
             seconds INT,
             total_seconds INT,
             PRIMARY KEY (user_id)
-        )
-    """
+        );
 
-    await conn.execute(query)
-
-    query = """
         CREATE TABLE IF NOT EXISTS tictactoe (
             winner INT NOT NULL,
             rival INT NOT NULL
-        )
-    """
-    
-    await conn.execute(query)
+        );
 
-    query = """
         CREATE TABLE IF NOT EXISTS rps (
             winner INT NOT NULL,
             rival INT NOT NULL
-        )
-    """
+        );
 
-    await conn.execute(query)
-
-    query = """
         CREATE TABLE IF NOT EXISTS guess (
             user_id INT NOT NULL,
             wins INT,
             PRIMARY KEY (user_id)
-        )
+        );
     """
 
-    await conn.execute(query)
+    await conn.executescript(sql_script)
 
 def sanitize_response(string: str) -> str:
     return html.unescape(string)

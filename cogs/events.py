@@ -126,6 +126,10 @@ class Events(commands.Cog):
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> Any:
         if not after.guild or after.author.bot:
             return
+
+        # A link got turned into an embed
+        if not before.embeds and after.embeds:
+            return
     
         if after.guild.id not in self.bot.logging_webhooks:
             async with self.bot.pool.acquire() as conn:

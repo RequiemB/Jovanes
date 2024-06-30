@@ -48,7 +48,7 @@ class Games(commands.Cog):
     @commands.command(name="trivia", description="Launches an interactive Trivia session with the bot.")
     @commands.guild_only()
     @commands.cooldown(1, 5.0, commands.BucketType.user)
-    async def trivia(self, ctx: commands.Context) -> None:
+    async def trivia(self, ctx: commands.Context[Jovanes]) -> None:
         assert isinstance(ctx.author, discord.Member)
 
         await ctx.defer()
@@ -91,7 +91,7 @@ class Games(commands.Cog):
 
     @commands.group(name="trivialb", description="The global leaderboard for the trivia.", invoke_without_command=True)
     @commands.guild_only()
-    async def trivialb(self, ctx: commands.Context) -> None:
+    async def trivialb(self, ctx: commands.Context[Jovanes]) -> None:
         async with self.bot.pool.acquire() as conn:
             res = await conn.fetchall("SELECT user_id, correct, wrong, streak FROM trivia ORDER BY correct DESC")
 
@@ -108,7 +108,7 @@ class Games(commands.Cog):
         await ctx.send(embed=e)
 
     @trivialb.command(name="stats", aliases=["s"])
-    async def trivialb_stats(self, ctx: commands.Context) -> None:        
+    async def trivialb_stats(self, ctx: commands.Context[Jovanes]) -> None:        
         async with self.bot.pool.acquire() as conn:
             res = await conn.fetchall("SELECT user_id, correct, wrong, streak FROM trivia ORDER BY correct DESC")
 
@@ -139,7 +139,7 @@ class Games(commands.Cog):
 
     @commands.command(name="memory", description="Starts a memory game with the bot.")
     @commands.guild_only()
-    async def memory(self, ctx: commands.Context) -> None:
+    async def memory(self, ctx: commands.Context[Jovanes]) -> None:
         assert ctx.guild and isinstance(ctx.author, discord.Member)
         view = views.Memory(ctx.bot, ctx.author, ctx.guild)
         view.message = await ctx.send(f"The game will start soon, {ctx.author.mention}.", view=view)
@@ -164,8 +164,9 @@ class Games(commands.Cog):
 
     @commands.command(name="tictactoe", description="Plays a tic-tac-toe game with someone.", aliases=["ttt"])
     @commands.guild_only()
-    async def tictactoe(self, ctx: commands.Context, player: discord.Member) -> None:
+    async def tictactoe(self, ctx: commands.Context[Jovanes], player: discord.Member) -> None:
         assert isinstance(ctx.author, discord.Member)
+
         if player.id == ctx.author.id:
             await ctx.reply("You can't play with yourself.")
             return
@@ -185,7 +186,7 @@ class Games(commands.Cog):
 
     @commands.group(name="tictactoelb", description="The global leaderboard for tic-tac-toe.", invoke_without_command=True)
     @commands.guild_only()
-    async def tictactoelb(self, ctx: commands.Context) -> None:
+    async def tictactoelb(self, ctx: commands.Context[Jovanes]) -> None:
         async with self.bot.pool.acquire() as conn:
             res = await conn.fetchall("SELECT winner FROM tictactoe")
 
@@ -215,7 +216,7 @@ class Games(commands.Cog):
         await ctx.send(embed=e)
 
     @tictactoelb.command(name="info", description="Shows the individual match information of a user.")
-    async def tictactoelb_info(self, ctx: commands.Context, member: Optional[discord.Member]) -> None:
+    async def tictactoelb_info(self, ctx: commands.Context[Jovanes], member: Optional[discord.Member]) -> None:
         assert isinstance(ctx.author, discord.Member)
         member = member or ctx.author
 
@@ -242,7 +243,7 @@ class Games(commands.Cog):
 
     @commands.command(name="rps", description="Play a RPS match with another user.")
     @commands.guild_only()
-    async def rps(self, ctx: commands.Context, player: discord.Member) -> None:
+    async def rps(self, ctx: commands.Context[Jovanes], player: discord.Member) -> None:
         assert isinstance(ctx.author, discord.Member)
 
         if player.id == ctx.author.id:
@@ -268,7 +269,7 @@ class Games(commands.Cog):
     
     @commands.group(name="rpslb", description="The global leaderboard for rock-paper-scissors.", invoke_without_command=True)
     @commands.guild_only()
-    async def rpslb(self, ctx: commands.Context) -> None:
+    async def rpslb(self, ctx: commands.Context[Jovanes]) -> None:
         async with self.bot.pool.acquire() as conn:
             res = await conn.fetchall("SELECT winner FROM rps")
 
@@ -298,7 +299,7 @@ class Games(commands.Cog):
         await ctx.send(embed=e)
 
     @rpslb.command(name="info", description="Shows the individual match information of a user.")
-    async def rps_info(self, ctx: commands.Context, member: Optional[discord.Member]) -> None:
+    async def rps_info(self, ctx: commands.Context[Jovanes], member: Optional[discord.Member]) -> None:
         assert isinstance(ctx.author, discord.Member)
         member = member or ctx.author
 

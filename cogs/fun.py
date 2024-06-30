@@ -13,43 +13,43 @@ import asyncio
 from babel import Locale
 from typing import Dict, Union, Optional, Any, TYPE_CHECKING
 from helpers import utils as _utils
-from langdetect import detect 
+from langdetect import detect
 from copy import deepcopy
 
 if TYPE_CHECKING:
     from ..main import Jovanes
+
 
 class Fun(commands.Cog):
     def __init__(self, bot: Jovanes) -> None:
         self.bot = bot
 
         self.context_menu = app_commands.ContextMenu(
-            name = "Translate",
-            callback = self._context_translate
+            name="Translate", callback=self._context_translate
         )
         self.bot.tree.add_command(self.context_menu)
 
         self.responses = [
-            'It is certain.',
-            'It is decidedly so.',
-            'Without a doubt.',
-            'Yes - definitely.',
-            'You may rely on it.',
-            'As I see it, yes.',
-            'Most likely.',
-            'Outlook good.',
-            'Yes.',
-            'Signs point to yes.',
-            'Reply hazy, try again.',
-            'Ask again later.',
-            'Better not tell you now.',
-            'Cannot predict now.',
-            'Concentrate and ask again.',
-            'Do not count on it.',
-            'My reply is no.',
-            'My sources say no.',
-            'Outlook not so good.',
-            'Very doubtful.'
+            "It is certain.",
+            "It is decidedly so.",
+            "Without a doubt.",
+            "Yes - definitely.",
+            "You may rely on it.",
+            "As I see it, yes.",
+            "Most likely.",
+            "Outlook good.",
+            "Yes.",
+            "Signs point to yes.",
+            "Reply hazy, try again.",
+            "Ask again later.",
+            "Better not tell you now.",
+            "Cannot predict now.",
+            "Concentrate and ask again.",
+            "Do not count on it.",
+            "My reply is no.",
+            "My sources say no.",
+            "Outlook not so good.",
+            "Very doubtful.",
         ]
         self._session = self.bot._session
         self.snipe_data = self.bot.snipe_data
@@ -61,7 +61,7 @@ class Fun(commands.Cog):
     async def on_message(self, message: discord.Message) -> Any:
         if not message.attachments:
             return
-        
+
         file = message.attachments[0]
         if not os.path.exists("./images"):
             os.mkdir("./images")
@@ -80,22 +80,31 @@ class Fun(commands.Cog):
         api_key = os.getenv("RAPIDAPI_KEY")
         if not api_key:
             return {}
-        
+
         url = "https://microsoft-translator-text.p.rapidapi.com/translate"
 
-        query = {"api-version":"3.0","to[0]":to_lang,"textType":"plain","profanityAction":"NoAction"}
+        query = {
+            "api-version": "3.0",
+            "to[0]": to_lang,
+            "textType": "plain",
+            "profanityAction": "NoAction",
+        }
 
         payload = [{"Text": text}]
         headers = {
-        	"content-type": "application/json",
-        	"X-RapidAPI-Key": api_key,
-        	"X-RapidAPI-Host": "microsoft-translator-text.p.rapidapi.com"
+            "content-type": "application/json",
+            "X-RapidAPI-Key": api_key,
+            "X-RapidAPI-Host": "microsoft-translator-text.p.rapidapi.com",
         }
-        resp = await self._session.post(url, json=payload, headers=headers, params=query)
+        resp = await self._session.post(
+            url, json=payload, headers=headers, params=query
+        )
         data = await resp.json()
         return data
 
-    async def _context_translate(self, interaction: discord.Interaction[Jovanes], message: discord.Message):
+    async def _context_translate(
+        self, interaction: discord.Interaction[Jovanes], message: discord.Message
+    ):
         await interaction.response.defer(thinking=True)
 
         source_lang = None
@@ -108,43 +117,62 @@ class Fun(commands.Cog):
         to_lang = Locale(interaction.locale.value[:2])
 
         if source_lang == to_lang:
-            return await interaction.followup.send(f"The message you tried to translate is already in {to_lang.display_name}.")
+            return await interaction.followup.send(
+                f"The message you tried to translate is already in {to_lang.display_name}."
+            )
         try:
             translation = await self._translate(to_lang.language, message.content)
         except aiohttp.ClientPayloadError:
-            await interaction.followup.send(f"I can\'t translate this message. It's too long.")
+            await interaction.followup.send(
+                f"I can't translate this message. It's too long."
+            )
             return
-        
+
         if not translation:
             await interaction.followup.send(f"No API key was found.")
             return
-        
+
         try:
-            translation = translation[0]['translations'][0]['text'] # type: ignore
+            translation = translation[0]["translations"][0]["text"]  # type: ignore
         except KeyError:
-            await interaction.followup.send("No translations were received from the API.")
+            await interaction.followup.send(
+                "No translations were received from the API."
+            )
             return
-        
+
         e = discord.Embed(
-            title = "Translation",
-            description = f"Translation of the message by {message.author.mention} was **successful**.",
-            color = discord.Color.blue(),
-            timestamp = discord.utils.utcnow()
+            title="Translation",
+            description=f"Translation of the message by {message.author.mention} was **successful**.",
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow(),
         )
         if not source_lang:
             try:
-                source_lang = Locale(translation[0]['detectedLanguage']['language']) # type: ignore
+                source_lang = Locale(translation[0]["detectedLanguage"]["language"])  # type: ignore
             except:
                 e.add_field(name="Detected Language", value="Couldn't detect language.")
             else:
-                e.add_field(name="Detected Language", value=f"{source_lang.display_name} ({source_lang.get_display_name('en')})")
+                e.add_field(
+                    name="Detected Language",
+                    value=f"{source_lang.display_name} ({source_lang.get_display_name('en')})",
+                )
         else:
-            e.add_field(name="Detected Language", value=f"{source_lang.display_name} ({source_lang.get_display_name('en')})")
-            
+            e.add_field(
+                name="Detected Language",
+                value=f"{source_lang.display_name} ({source_lang.get_display_name('en')})",
+            )
+
         e.add_field(name="Target Language", value=to_lang.display_name)
         e.add_field(name="From", value=message.content, inline=False)
         e.add_field(name="To", value=translation)
-        e.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.avatar.url if interaction.user.avatar is not None else None)
+        e.set_footer(
+            text=f"Requested by {interaction.user}",
+            icon_url=(
+                interaction.user.avatar.url
+                if interaction.user.avatar is not None
+                else None
+            ),
+        )
         await interaction.followup.send(embed=e)
 
     def get_size(self) -> str:
@@ -161,16 +189,26 @@ class Fun(commands.Cog):
         size = "=" * number
         return size
 
-    @commands.command(name="gay", description="Shows the gay rate of a user (very accurate).")
+    @commands.command(
+        name="gay", description="Shows the gay rate of a user (very accurate)."
+    )
     async def gay(self, ctx: commands.Context[Jovanes], *, name: str) -> Any:
         rate = random.randint(0, 100)
-        e = discord.Embed(description = f":rainbow_flag: **{name}** is {rate}% gay.", color=discord.Color.random())
+        e = discord.Embed(
+            description=f":rainbow_flag: **{name}** is {rate}% gay.",
+            color=discord.Color.random(),
+        )
         await ctx.send(embed=e)
 
-    @commands.command(name="hot", description="Shows the hotness rate of a user (very accurate).")
+    @commands.command(
+        name="hot", description="Shows the hotness rate of a user (very accurate)."
+    )
     async def hot(self, ctx: commands.Context[Jovanes], *, name: str) -> Any:
         rate = random.randint(0, 100)
-        e = discord.Embed(description = f":sunglasses: **{name}** is {rate}% hot.", color=discord.Color.random())
+        e = discord.Embed(
+            description=f":sunglasses: **{name}** is {rate}% hot.",
+            color=discord.Color.random(),
+        )
         await ctx.send(embed=e)
 
     @commands.command(description="Shows the IQ rate of a member (very accurate).")
@@ -182,33 +220,45 @@ class Fun(commands.Cog):
             else:
                 rate = random.randint(70, 120)
 
-        e = discord.Embed(description = f"{name} has an IQ of **{rate}**.", color=discord.Color.random())
+        e = discord.Embed(
+            description=f"{name} has an IQ of **{rate}**.", color=discord.Color.random()
+        )
         await ctx.send(embed=e)
 
     @commands.command(description="Tells you if the person is a nigger.")
     async def nigger(self, ctx: commands.Context[Jovanes], *, name: str) -> Any:
         chance = random.choice([0, 1])
         if chance == 1:
-            e = discord.Embed(description = f":man_tone5: {name} is a nigger.", color=0x000000)
+            e = discord.Embed(
+                description=f":man_tone5: {name} is a nigger.", color=0x000000
+            )
         else:
-            e = discord.Embed(description = f":man_tone1: {name} is not a nigger.", color=discord.Color.lighter_gray())
+            e = discord.Embed(
+                description=f":man_tone1: {name} is not a nigger.",
+                color=discord.Color.lighter_gray(),
+            )
         await ctx.send(embed=e)
 
     @commands.command(description="Shows the penis size of a user.")
     async def size(self, ctx: commands.Context[Jovanes], *, name: str) -> Any:
         size = self.get_size()
-        e = discord.Embed(description = f"{name}'s cock size is 8{size}D.", color=discord.Color.random())
+        e = discord.Embed(
+            description=f"{name}'s cock size is 8{size}D.", color=discord.Color.random()
+        )
         await ctx.send(embed=e)
 
     @commands.command(description="Shows the Fred profile of a member.")
-    async def profile(self, ctx: commands.Context[Jovanes], member: Union[discord.User, discord.Member]) -> Any:
+    async def profile(
+        self,
+        ctx: commands.Context[Jovanes],
+        member: Union[discord.User, discord.Member],
+    ) -> Any:
         assert ctx.guild
 
         member = member or ctx.author
-    
+
         e = discord.Embed(
-            color = discord.Color.random(),
-            timestamp = ctx.message.created_at
+            color=discord.Color.random(), timestamp=ctx.message.created_at
         )
         gay = random.randint(1, 100)
         nigger = True if random.randint(1, 100) > 50 else False
@@ -220,7 +270,7 @@ class Fun(commands.Cog):
         if chance < 10:
             partner = "Not worthy of love."
         else:
-            partner = random.choice(members).mention 
+            partner = random.choice(members).mention
 
         size = self.get_size()
         if len(size) <= 5:
@@ -232,15 +282,33 @@ class Fun(commands.Cog):
         else:
             cock_emoji = ":fire:"
 
-        e.add_field(name="Age", value=f":bar_chart: | {random.randint(7, 20)} years old.", inline=False)
+        e.add_field(
+            name="Age",
+            value=f":bar_chart: | {random.randint(7, 20)} years old.",
+            inline=False,
+        )
         e.add_field(name="Gender", value=f":helicopter: | {gender}", inline=False)
-        e.add_field(name="Nigger", value=f":man_tone5: | {member.name} is a nigger." if nigger else f":man_tone1: | {member.name} is not a nigger.", inline=False)
+        e.add_field(
+            name="Nigger",
+            value=(
+                f":man_tone5: | {member.name} is a nigger."
+                if nigger
+                else f":man_tone1: | {member.name} is not a nigger."
+            ),
+            inline=False,
+        )
         e.add_field(name="Gayness", value=f":rainbow_flag: | {gay}%", inline=False)
-        e.add_field(name="IQ", value=f":brain: | {member.name} has an IQ of {iq}.", inline=False)
+        e.add_field(
+            name="IQ", value=f":brain: | {member.name} has an IQ of {iq}.", inline=False
+        )
         e.add_field(name="Sausage Size", value=f"{cock_emoji} | 8{size}D")
         e.add_field(name="Partner", value=f":kiss: | {partner}", inline=False)
-        e.set_footer(text = f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
-        e.set_author(name=f"{member.name}'s Fred Profile", icon_url=member.display_avatar.url)
+        e.set_footer(
+            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
+        )
+        e.set_author(
+            name=f"{member.name}'s Fred Profile", icon_url=member.display_avatar.url
+        )
         await ctx.send(embed=e)
 
     @commands.command(description="Finds a random ship.")
@@ -248,26 +316,35 @@ class Fun(commands.Cog):
         assert ctx.guild
 
         members = [m for m in ctx.guild.members if not m.bot]
-        e = discord.Embed(description=f"I ship {random.choice(members).mention} and {random.choice(members).mention}.", color = discord.Color.random())
+        e = discord.Embed(
+            description=f"I ship {random.choice(members).mention} and {random.choice(members).mention}.",
+            color=discord.Color.random(),
+        )
         await ctx.send(embed=e)
 
     @commands.command(description="Shows the avatar of a user.", aliases=["av"])
-    async def avatar(self, ctx: commands.Context[Jovanes], user: Optional[discord.User | discord.Member]):
+    async def avatar(
+        self,
+        ctx: commands.Context[Jovanes],
+        user: Optional[discord.User | discord.Member],
+    ):
         user = user or ctx.author
-        e = discord.Embed(color = discord.Color.blue(), timestamp=ctx.message.created_at)
+        e = discord.Embed(color=discord.Color.blue(), timestamp=ctx.message.created_at)
         e.set_author(name=user.display_name, icon_url=user.display_avatar.url)
         e.set_image(url=user.display_avatar.url)
-        e.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
+        e.set_footer(
+            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
+        )
         await ctx.send(embed=e)
 
     @commands.command(name="8ball", description="An 8Ball, but digital.")
     async def _8ball(self, ctx: commands.Context[Jovanes], *, question: str):
         response = random.choice(self.responses)
         e = discord.Embed(
-            title = ":8ball: 8ball",
-            description = "The digital 8ball has spoken.",
-            color = discord.Color.random(),
-            timestamp = ctx.message.created_at
+            title=":8ball: 8ball",
+            description="The digital 8ball has spoken.",
+            color=discord.Color.random(),
+            timestamp=ctx.message.created_at,
         )
         e.add_field(name="Question", value=question)
         e.add_field(name="Answer", value=response, inline=False)
@@ -282,7 +359,9 @@ class Fun(commands.Cog):
         message = self.snipe_data[ctx.channel.id]
 
         e = discord.Embed(color=discord.Color.blue())
-        e.set_author(name=message.author.display_name, icon_url=message.author.display_avatar)
+        e.set_author(
+            name=message.author.display_name, icon_url=message.author.display_avatar
+        )
         e.timestamp = message.created_at
         e.description = message.content if message.content else ""
 
@@ -291,7 +370,9 @@ class Fun(commands.Cog):
             _format = filename.split(".")[::-1][0]
             e.description = filename
             try:
-                file = discord.File(f"./images/{message.id}.{_format}", filename=filename)
+                file = discord.File(
+                    f"./images/{message.id}.{_format}", filename=filename
+                )
             except:
                 await ctx.reply(embed=e)
             else:
@@ -300,78 +381,96 @@ class Fun(commands.Cog):
                     await ctx.reply(file=file, embed=e)
 
                 elif _format in ("ogg"):
-                    await ctx.reply(f"Voice message sent by: {message.author.mention}", file=file)
+                    await ctx.reply(
+                        f"Voice message sent by: {message.author.mention}", file=file
+                    )
                 else:
-                    await ctx.reply(f"Video sent by: {message.author.mention}", allowed_mentions=discord.AllowedMentions.none(), file=file)
+                    await ctx.reply(
+                        f"Video sent by: {message.author.mention}",
+                        allowed_mentions=discord.AllowedMentions.none(),
+                        file=file,
+                    )
             return
 
         if message.embeds:
             if message.embeds[0].url:
-                await ctx.reply(f"File sent by {message.author.mention}.\n{message.embeds[0].url}", allowed_mentions=discord.AllowedMentions.none())
+                await ctx.reply(
+                    f"File sent by {message.author.mention}.\n{message.embeds[0].url}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
                 return
-            
+
             e.description += f"\n{message.embeds[0].description}"
 
         await ctx.reply(embed=e)
-        
+
     @commands.command(description="Mock a message by a user.")
-    async def mock(self, ctx: commands.Context[Jovanes], *, statement: Optional[str]) -> Any:
+    async def mock(
+        self, ctx: commands.Context[Jovanes], *, statement: Optional[str]
+    ) -> Any:
         if not statement and not ctx.message.reference:
-            await ctx.reply("You must either provide a statement to mock or reference a message.")
+            await ctx.reply(
+                "You must either provide a statement to mock or reference a message."
+            )
             return
 
         if statement and ctx.message.reference:
-            await ctx.reply("You can't reference a message and give a statement together.")
-            return 
+            await ctx.reply(
+                "You can't reference a message and give a statement together."
+            )
+            return
 
         if ctx.message.reference:
             resolved = ctx.message.reference.resolved
             if not resolved or not isinstance(resolved, discord.Message):
                 await ctx.reply("An error occured while referencing that message.")
                 return
-            
+
             content = resolved.content
-            if len(content) > 250: 
+            if len(content) > 250:
                 await ctx.send("Message content exceeds 250 characters in length.")
                 return
-            
+
             mock = _utils.convert_to_mock(content)
             await ctx.message.delete()
             await resolved.reply(mock)
         else:
             if not statement:
                 return
-            
+
             if len(statement) > 250:
                 await ctx.send("Statement cannot exceed 250 characters in length.")
                 return
-            
+
             mock = _utils.convert_to_mock(statement)
             await ctx.send(mock)
 
     @commands.command(name="say", description="Say something as the bot.")
-    async def say(self, ctx: commands.Context[Jovanes], channel: discord.TextChannel, *, message: str) -> Any:
+    async def say(
+        self,
+        ctx: commands.Context[Jovanes],
+        channel: discord.TextChannel,
+        *,
+        message: str,
+    ) -> Any:
         if ctx.author.id not in self.bot.say_authorized:
             await ctx.reply("You're not authorized to use this command.")
             return
 
         m = await channel.send(message)
         self.who_say[m.id] = ctx.author.id
-        await ctx.message.add_reaction('✅')
+        await ctx.message.add_reaction("✅")
 
     @commands.command(name="cat", description="Shows a cat.")
     async def cat(self, ctx: commands.Context[Jovanes]) -> Any:
         URL = "https://api.thecatapi.com/v1/images/search"
-        
+
         res = await self._session.get(URL)
         data = await res.json()
 
-        e = discord.Embed(
-            title = "Here's a cat! :cat:",
-            color = discord.Color.random()
-        )
+        e = discord.Embed(title="Here's a cat! :cat:", color=discord.Color.random())
 
-        e.set_image(url=data[0]['url'])
+        e.set_image(url=data[0]["url"])
         await ctx.reply(embed=e)
 
     @commands.command(name="joke", description="Sends a random joke.")
@@ -395,18 +494,21 @@ class Fun(commands.Cog):
         if ctx.message.reference is None:
             await ctx.reply("You must reference a message by the bot.")
             return
-        
+
         resolved = ctx.message.reference.resolved
         if not resolved or isinstance(resolved, discord.DeletedReferencedMessage):
             await ctx.reply("Referenced message wasn't found in the message cache.")
             return
-        
-        if resolved.author.id != self.bot.user.id or resolved.id not in self.who_say: # type: ignore
+
+        if resolved.author.id != self.bot.user.id or resolved.id not in self.who_say:  # type: ignore
             await ctx.reply("This is not a message sent by the command say.")
             return
-        
+
         await ctx.message.delete()
-        await resolved.reply(f"This message was sent by <@{self.who_say[resolved.id]}>.")
+        await resolved.reply(
+            f"This message was sent by <@{self.who_say[resolved.id]}>."
+        )
+
 
 async def setup(bot: Jovanes) -> None:
     await bot.add_cog(Fun(bot))

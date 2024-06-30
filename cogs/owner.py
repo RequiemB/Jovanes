@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..main import Jovanes
 
+
 class Owner(commands.Cog):
     def __init__(self, bot: Jovanes) -> None:
         self.bot = bot
@@ -19,7 +20,7 @@ class Owner(commands.Cog):
     @commands.command(description="Shuts down the bot.")
     @commands.is_owner()
     async def shutdown(self, ctx: commands.Context[Jovanes]) -> None:
-        await ctx.send('Shutting down now...')
+        await ctx.send("Shutting down now...")
         await self.bot.close()
 
     @commands.command(description="Clears the local image cache.")
@@ -28,6 +29,7 @@ class Owner(commands.Cog):
         shutil.rmtree("./images")
         os.mkdir("./images")
         await ctx.message.add_reaction("✅")
+
 
 async def setup(bot: Jovanes) -> None:
     await bot.add_cog(Owner(bot))
